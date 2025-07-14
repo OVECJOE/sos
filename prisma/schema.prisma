@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid()) @map("id")
+  userId            String  @map("user_id")
+  type              String  @map("type")
+  provider          String  @map("provider")
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @map("refresh_token")
+  access_token      String? @map("access_token")
+  expires_at        Int?    @map("expires_at")
+  token_type        String? @map("token_type")
+  scope             String? @map("scope")
+  id_token          String? @map("id_token")
+  session_state     String? @map("session_state")
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId], map: "account_provider_providerAccountId_key")
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid()) @map("id")
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime @map("expires")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid()) @map("id")
+  name          String?   @map("name")
+  email         String    @unique @map("email")
+  emailVerified DateTime? @map("email_verified")
+  image         String?   @map("image")
+  socialScore   Int       @default(800) @map("social_score")
+  credits       Int       @default(0) @map("credits")
+  isOrganizer   Boolean   @default(false) @map("is_organizer")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts          Account[]
+  sessions          Session[]
+  createdMeetings   Meeting[]   @relation("UserCreatedMeetings")
+  attendeeRecords   Attendee[]  @relation("UserAttendeeRecords")
+  attendanceRecords Attendance[] @relation("UserAttendanceRecords")
+  transactions      Transaction[] @relation("UserTransactions")
+
+  @@index([socialScore], map: "user_social_score_idx")
+  @@index([email], map: "user_email_idx")
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String   @map("identifier")
+  token      String   @unique @map("token")
+  expires    DateTime @map("expires")
+
+  @@unique([identifier, token], map: "verificationtoken_identifier_token_key")
+  @@map("verification_tokens")
+}
+
+model Meeting {
+  id                  String        @id @default(cuid()) @map("id")
+  title               String        @map("title")
+  description         String?       @map("description")
+  googleMeetLink      String        @map("google_meet_link")
+  scheduledStart      DateTime      @map("scheduled_start")
+  scheduledEnd        DateTime      @map("scheduled_end")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  status              MeetingStatus @default(SCHEDULED) @map("status")
+  organizerId         String        @map("organizer_id")
+  shareableLink       String        @unique @map("shareable_link")
+  confirmationDeadline DateTime     @map("confirmation_deadline")
+  scorePenalty        Int           @default(25) @map("score_penalty")
+
+  organizer    User         @relation("UserCreatedMeetings", fields: [organizerId], references: [id])
+  attendees    Attendee[]   @relation("MeetingAttendees")
+  attendances  Attendance[] @relation("MeetingAttendances")
+  transactions Transaction[] @relation("MeetingTransactions")
+
+  @@index([organizerId], map: "meeting_organizer_id_idx")
+  @@index([shareableLink], map: "meeting_shareable_link_idx")
+  @@index([scheduledStart], map: "meeting_scheduled_start_idx")
+  @@map("meetings")
+}
+
+model Attendee {
+  id          String         @id @default(cuid()) @map("id")
+  meetingId   String         @map("meeting_id")
+  userId      String         @map("user_id")
+  invitedAt   DateTime       @default(now()) @map("invited_at")
+  confirmedAt DateTime?      @map("confirmed_at")
+  status      AttendeeStatus @default(INVITED) @map("status")
+
+  meeting Meeting @relation("MeetingAttendees", fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation("UserAttendeeRecords", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId], map: "attendee_meeting_id_user_id_key")
+  @@index([meetingId], map: "attendee_meeting_id_idx")
+  @@index([userId], map: "attendee_user_id_idx")
+  @@map("attendees")
+}
+
+model Attendance {
+  id          String   @id @default(cuid()) @map("id")
+  meetingId   String   @map("meeting_id")
+  userId      String   @map("user_id")
+  attendedAt  DateTime @default(now()) @map("attended_at")
+  leftAt      DateTime? @map("left_at")
+  duration    Int?     @map("duration")
+  wasPresent  Boolean  @default(true) @map("was_present")
+
+  meeting Meeting @relation("MeetingAttendances", fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation("UserAttendanceRecords", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId], map: "attendance_meeting_id_user_id_key")
+  @@index([meetingId], map: "attendance_meeting_id_idx")
+  @@index([userId], map: "attendance_user_id_idx")
+  @@map("attendances")
+}
+
+model Transaction {
+  id          String   @id @default(cuid()) @map("id")
+  userId      String   @map("user_id")
+  meetingId   String?  @map("meeting_id")
+  type        TransactionType @map("type")
+  amount      Int      @map("amount")
+  description String   @map("description")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user    User     @relation("UserTransactions", fields: [userId], references: [id], onDelete: Cascade)
+  meeting Meeting? @relation("MeetingTransactions", fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([userId], map: "transaction_user_id_idx")
+  @@index([meetingId], map: "transaction_meeting_id_idx")
+  @@map("transactions")
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendeeStatus {
+  INVITED
+  CONFIRMED
+  DECLINED
+  NO_SHOW
+}
+
+enum TransactionType {
+  CREDIT_PURCHASE
+  CREDIT_GRANT
+  MEETING_COST
+  REFUND
+} 
